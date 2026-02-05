@@ -1,4 +1,9 @@
-def no_repeat_candidate(state):
+from typing import Any
+
+from langgraph.graph import MessagesState
+
+
+def no_repeat_candidate(state: MessagesState) -> list[str]:
     """Prevent the same speaker from speaking consecutively.
 
     This candidate function filters out the current speaker from the list of
@@ -16,7 +21,10 @@ def no_repeat_candidate(state):
 
     """
     messages = state.get("messages", [])
-    roles = state.get("roles", [])
+    roles_obj: Any = state.get("roles", [])
+
+    # Cast to list[str] for type safety
+    roles: list[str] = list(roles_obj) if roles_obj else []
 
     if not messages:
         return roles

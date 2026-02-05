@@ -1,17 +1,19 @@
 from collections.abc import Callable
 from enum import Enum
+from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import MessagesState
 from pydantic import BaseModel, Field
 
 default_selector_system_prompt = """You are a group chat manager. Your job is to select the next speaker based on the conversation history and the available participants."""
 
 
 def llm_based_selector(
-    model,
+    model: Any,
     system_prompt: str = default_selector_system_prompt,
-    candidate_func: Callable | None = None,
-):
+    candidate_func: Callable[[MessagesState], list[str]] | None = None,
+) -> Callable[[MessagesState], str]:
     """Create an LLM-based selector function for choosing the next speaker.
 
     This function creates a selector that uses a language model to intelligently
@@ -62,24 +64,27 @@ def llm_based_selector(
         ]
     )
 
-    def select_speaker(state):
+    def select_speaker(state: MessagesState) -> str:
         messages = state.get("messages", [])
-        allowed_roles = (
+        allowed_roles_obj: Any = (
             state.get("roles", []) if candidate_func is None else candidate_func(state)
         )
 
+        # Cast to list for type safety
+        allowed_roles: list[str] = list(allowed_roles_obj) if allowed_roles_obj else []
+
         # Create a copy to avoid mutating the original list
-        allowed_roles_with_terminate = [*allowed_roles, "Terminate"]
+        allowed_roles_with_terminate: list[str] = [*allowed_roles, "Terminate"]
 
         # Dynamically create an Enum from the allowed roles
-        speaker_enum = Enum(
-            "SpeakerEnum", {role: role for role in allowed_roles_with_terminate}
-        )
+        # Using a dictionary comprehension instead of a dict literal
+        enum_dict = {role: role for role in allowed_roles_with_terminate}
+        speaker_enum = Enum("SpeakerEnum", enum_dict)
 
         class SelectParticipant(BaseModel):
             """Select the next speaker based on the system prompt and messages."""
 
-            next_speaker: speaker_enum = Field(
+            next_speaker: speaker_enum = Field(  # type: ignore[valid-type]
                 description="The next speaker in the conversation"
             )
 
@@ -88,6 +93,6 @@ def llm_based_selector(
 
         result = selector_chain.invoke({"messages": messages})
 
-        return result.next_speaker.value
+        return str(result.next_speaker.value)
 
     return select_speaker
